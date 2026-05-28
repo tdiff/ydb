@@ -413,8 +413,8 @@ void TKqpNewRBOTransformer::InitializeRBOOptimizationStages() {
 
     // Logical stage.
     TVector<std::unique_ptr<IRule>> logicalStageRules;
-    logicalStageRules.emplace_back(std::make_unique<TPruneDeadMapElementsRule>());
     logicalStageRules.emplace_back(std::make_unique<TRemoveIdenityMapRule>());
+    logicalStageRules.emplace_back(std::make_unique<TPruneDeadMapElementsRule>());
     logicalStageRules.emplace_back(std::make_unique<TPushMapRule>());
     logicalStageRules.emplace_back(std::make_unique<TSinkRenameRule>());
     logicalStageRules.emplace_back(std::make_unique<TInlineJoinFiltersRule>());

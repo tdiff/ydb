@@ -4216,6 +4216,9 @@ PRAGMA ydb.OptShuffleElimination = "true";
         UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
 
         const auto plan = TString{*result.GetStats()->GetPlan()};
+        NYdb::NConsoleClient::TQueryPlanPrinter queryPlanPrinter(NYdb::NConsoleClient::EDataFormat::PrettyTable, false, Cout, 0);
+        queryPlanPrinter.Print(plan);
+
         const auto hashShuffles = CollectHashShuffleDescriptions(plan);
 
         const bool hasCustomerCompositeShuffle = std::any_of(
