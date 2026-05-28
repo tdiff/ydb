@@ -7,6 +7,7 @@
 #include <ydb/core/kqp/common/simple/services.h>
 #include <ydb/core/kqp/executer_actor/kqp_executer.h>
 #include <ydb/core/kqp/opt/rbo/kqp_operator.h>
+#include <ydb/core/kqp/opt/rbo/kqp_rbo.h>
 #include <ydb/core/statistics/ut_common/ut_common.h>
 #include <ydb/core/kqp/ut/common/kqp_ut_common.h>
 #include <ydb/library/actors/testlib/test_runtime.h>
@@ -258,6 +259,43 @@ NJson::TJsonValue GetSimplifiedPlan(const TString& plan) {
     const auto simplifiedPlan = planMap.find("SimplifiedPlan");
     UNIT_ASSERT_C(simplifiedPlan != planMap.end(), plan);
     return simplifiedPlan->second;
+}
+
+TIntrusivePtr<TOpRead> MakeTestRead(const TVector<TInfoUnit>& outputIUs, TPositionHandle pos) {
+    TVector<TString> columns;
+    columns.reserve(outputIUs.size());
+    for (const auto& iu : outputIUs) {
+        columns.push_back(iu.GetColumnName());
+    }
+
+    return MakeIntrusive<TOpRead>(
+        "",
+        columns,
+        outputIUs,
+        NYql::EStorageType::RowStorage,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        std::nullopt,
+        ESortDir::None,
+        TPhysicalOpProps{},
+        pos
+    );
+}
+
+TMapElement MakeTestRename(const TString& to, const TString& from, TPositionHandle pos, NYql::TExprContext& exprCtx, TPlanProps& planProps) {
+    return TMapElement(TInfoUnit(to), TInfoUnit(from), pos, &exprCtx, &planProps);
+}
+
+TMapElement MakeTestAppend(const TString& to, const TString& from, TPositionHandle pos, NYql::TExprContext& exprCtx, TPlanProps& planProps) {
+    return TMapElement(TInfoUnit(to), MakeColumnAccess(TInfoUnit(from), pos, &exprCtx, &planProps), false);
+}
+
+void ComputeLogicalTestProps(TOpRoot& root) {
+    root.ComputeParents();
+    ComputePlanLiveness(root);
+    ComputePlanNameConstraints(root);
 }
 
 }
@@ -775,6 +813,57 @@ Y_UNIT_TEST_SUITE(KqpRboYql) {
         UNIT_ASSERT_C(filters[0].IsString(), joinJson.GetStringRobust());
         const auto joinFilter = filters[0].GetStringSafe();
         UNIT_ASSERT_C(joinFilter.Contains("t1.b < t2.c"), joinFilter);
+    }
+
+    Y_UNIT_TEST(NameConstraintsPropagateThroughUnary) {
+        NYql::TExprContext exprCtx;
+        TPlanProps planProps;
+        const auto pos = NYql::TPositionHandle();
+
+        auto leftRead = MakeTestRead({TInfoUnit("a")}, pos);
+        auto filter = MakeIntrusive<TOpFilter>(leftRead, pos, MakeColumnAccess(TInfoUnit("a"), pos, &exprCtx, &planProps));
+        auto rightRead = MakeTestRead({TInfoUnit("a")}, pos);
+        auto join = MakeIntrusive<TOpJoin>(filter, rightRead, pos, "Inner", TVector<std::pair<TInfoUnit, TInfoUnit>>{});
+        TOpRoot root(join, pos, {"a"});
+
+        ComputeLogicalTestProps(root);
+
+        UNIT_ASSERT(root.PlanProps.NameConstraints.GetForbiddenOut(join.get(), 0).contains(TInfoUnit("a")));
+        UNIT_ASSERT(root.PlanProps.NameConstraints.GetForbiddenOut(filter.get(), 0).contains(TInfoUnit("a")));
+    }
+
+    Y_UNIT_TEST(NameConstraintsMapRenameHidesForbiddenSource) {
+        NYql::TExprContext exprCtx;
+        TPlanProps planProps;
+        const auto pos = NYql::TPositionHandle();
+
+        auto leftRead = MakeTestRead({TInfoUnit("a")}, pos);
+        auto leftMap = MakeIntrusive<TOpMap>(leftRead, pos, TVector<TMapElement>{MakeTestRename("b", "a", pos, exprCtx, planProps)});
+        auto rightRead = MakeTestRead({TInfoUnit("a")}, pos);
+        auto join = MakeIntrusive<TOpJoin>(leftMap, rightRead, pos, "Inner", TVector<std::pair<TInfoUnit, TInfoUnit>>{});
+        TOpRoot root(join, pos, {"a"});
+
+        ComputeLogicalTestProps(root);
+
+        UNIT_ASSERT(root.PlanProps.NameConstraints.GetForbiddenOut(join.get(), 0).contains(TInfoUnit("a")));
+        UNIT_ASSERT(!root.PlanProps.NameConstraints.GetForbiddenOut(leftMap.get(), 0).contains(TInfoUnit("a")));
+    }
+
+    Y_UNIT_TEST(NameConstraintsMapAppendDoesNotHideForbiddenSource) {
+        NYql::TExprContext exprCtx;
+        TPlanProps planProps;
+        const auto pos = NYql::TPositionHandle();
+
+        auto leftRead = MakeTestRead({TInfoUnit("a")}, pos);
+        auto leftMap = MakeIntrusive<TOpMap>(leftRead, pos, TVector<TMapElement>{MakeTestAppend("b", "a", pos, exprCtx, planProps)});
+        auto rightRead = MakeTestRead({TInfoUnit("a")}, pos);
+        auto join = MakeIntrusive<TOpJoin>(leftMap, rightRead, pos, "Inner", TVector<std::pair<TInfoUnit, TInfoUnit>>{});
+        TOpRoot root(join, pos, {"a"});
+
+        ComputeLogicalTestProps(root);
+
+        UNIT_ASSERT(root.PlanProps.NameConstraints.GetForbiddenOut(join.get(), 0).contains(TInfoUnit("a")));
+        UNIT_ASSERT(root.PlanProps.NameConstraints.GetForbiddenOut(leftMap.get(), 0).contains(TInfoUnit("a")));
     }
 
     bool HasParam(const std::string& ast, const std::string& param) {

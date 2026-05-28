@@ -409,16 +409,17 @@ void TKqpNewRBOTransformer::InitializeRBOOptimizationStages() {
     inlineScalarSubPlanStageRules.emplace_back(std::make_unique<TFuseFiltersRule>());
     inlineScalarSubPlanStageRules.emplace_back(std::make_unique<TInlineScalarSubplanRule>());
     RBO.AddStage(std::make_unique<TRuleBasedStage>("Inline scalar subplans", std::move(inlineScalarSubPlanStageRules)));
-    RBO.AddStage(std::make_unique<TRenameStage>());
     RBO.AddStage(std::make_unique<TConstantFoldingStage>());
 
     // Logical stage.
     TVector<std::unique_ptr<IRule>> logicalStageRules;
+    logicalStageRules.emplace_back(std::make_unique<TPruneDeadMapElementsRule>());
+    logicalStageRules.emplace_back(std::make_unique<TRemoveIdenityMapRule>());
+    logicalStageRules.emplace_back(std::make_unique<TPushMapRule>());
+    logicalStageRules.emplace_back(std::make_unique<TSinkRenameRule>());
     logicalStageRules.emplace_back(std::make_unique<TInlineJoinFiltersRule>());
     logicalStageRules.emplace_back(std::make_unique<TFuseFiltersRule>());
-    logicalStageRules.emplace_back(std::make_unique<TRemoveIdenityMapRule>());
     logicalStageRules.emplace_back(std::make_unique<TExtractJoinExpressionsRule>());
-    logicalStageRules.emplace_back(std::make_unique<TPushMapRule>());
     logicalStageRules.emplace_back(std::make_unique<TPushFilterIntoJoinRule>());
     logicalStageRules.emplace_back(std::make_unique<TPushFilterUnderMapRule>());
     logicalStageRules.emplace_back(std::make_unique<TPushLimitIntoSortRule>());

@@ -96,6 +96,17 @@ class TPushMapRule : public ISimplifiedRule {
 };
 
 /**
+ * Sink semantic renames through transparent operators into their producers.
+ */
+class TSinkRenameRule : public IRule {
+  public:
+    TSinkRenameRule()
+        : IRule("Sink semantic rename", ERuleProperties::RequireParents | ERuleProperties::RequireLiveness | ERuleProperties::RequireNameConstraints) {}
+
+    virtual bool MatchAndApply(TIntrusivePtr<IOperator>& input, TRBOContext& ctx, TPlanProps& props) override;
+};
+
+/**
  * Push limit into sort operator
  */
 class TPushLimitIntoSortRule : public ISimplifiedRule {
@@ -227,15 +238,6 @@ class TAssignStagesRule : public IRule {
 };
 
 /**
- * Separate global stage to remove extra renames
- */
-class TRenameStage : public IRBOStage {
-  public:
-    TRenameStage();
-    virtual void RunStage(TOpRoot &root, TRBOContext &ctx) override;
-};
-
-/**
  * Separate global constant folding stage
  */
 class TConstantFoldingStage : public IRBOStage {
@@ -249,7 +251,8 @@ class TConstantFoldingStage : public IRBOStage {
  */
 class TPruneDeadMapElementsRule : public IRule {
   public:
-    TPruneDeadMapElementsRule() : IRule("Prune dead map elements", ERuleProperties::RequireParents | ERuleProperties::RequireLiveness) {}
+    TPruneDeadMapElementsRule()
+        : IRule("Prune dead map elements", ERuleProperties::RequireParents | ERuleProperties::RequireLiveness | ERuleProperties::RequireNameConstraints) {}
 
     virtual bool MatchAndApply(TIntrusivePtr<IOperator>& input, TRBOContext& ctx, TPlanProps& props) override;
 };
