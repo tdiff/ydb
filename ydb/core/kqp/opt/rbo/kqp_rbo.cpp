@@ -1,5 +1,4 @@
 #include "kqp_rbo.h"
-#include "kqp_plan_conversion_utils.h"
 
 #include <yql/essentials/utils/log/log.h>
 
@@ -11,13 +10,6 @@ namespace {
 const TInfoUnitSet& EmptyInfoUnitSet() {
     static const TInfoUnitSet empty;
     return empty;
-}
-
-bool CanNormalizeAfterStage(const TString& stageName) {
-    return stageName != "Assign physical stages"
-        && stageName != "Optimize physical stages"
-        && stageName != "Narrow by liveness"
-        && stageName != "Hash function propagation";
 }
 
 void ValidateNoDuplicateOutputIUs(TOpRoot& root) {
@@ -205,10 +197,6 @@ TExprNode::TPtr TRuleBasedOptimizer::Optimize(TOpRoot& root, TRBOContext& rboCtx
             YQL_CLOG(TRACE, CoreDq) << "Before stage:\n" << root.PlanToString(ctx, EPrintPlanOptions::PrintFullMetadata | EPrintPlanOptions::PrintBasicStatistics);
         }
         stage->RunStage(root, rboCtx);
-        if (CanNormalizeAfterStage(stage->StageName)) {
-            NormalizePlanOutputIUs(root, ctx);
-            root.ComputeParents();
-        }
         ValidateNoDuplicateOutputIUs(root);
         if (needToLog) {
             YQL_CLOG(TRACE, CoreDq) << "After stage:\n" << root.PlanToString(ctx, EPrintPlanOptions::PrintFullMetadata | EPrintPlanOptions::PrintBasicStatistics);
