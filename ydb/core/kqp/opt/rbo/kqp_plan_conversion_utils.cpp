@@ -72,32 +72,7 @@ void RenameJoinSideReferences(TOpJoin& join, const TInfoUnit& from, const TInfoU
     }
 }
 
-std::optional<TInfoUnit> TryPromoteAppendToRename(const TIntrusivePtr<IOperator>& input, const TInfoUnit& source,
-                                                  const TVector<TInfoUnit>& forbiddenOutputs) {
-    if (input->Kind != EOperator::Map) {
-        return std::nullopt;
-    }
-
-    auto map = CastOperator<TOpMap>(input);
-    for (auto& mapElement : map->MapElements) {
-        if (mapElement.IsRename() || !mapElement.IsColumnAccess() || mapElement.GetElementName() == source) {
-            continue;
-        }
-        if (mapElement.GetColumnAccess() != source) {
-            continue;
-        }
-        if (ContainsIU(forbiddenOutputs, mapElement.GetElementName())) {
-            continue;
-        }
-
-        mapElement.SetIsRename(true);
-        return mapElement.GetElementName();
-    }
-
-    return std::nullopt;
-}
-
-void NormalizeMap(const TIntrusivePtr<TOpMap>& map, TExprContext& ctx, TPlanProps& props) {
+void RepairMapOutputIUs(const TIntrusivePtr<TOpMap>& map, TExprContext& ctx, TPlanProps& props) {
     const auto inputIUs = map->GetInput()->GetOutputIUs();
     THashSet<TInfoUnit, TInfoUnit::THashFunction> renameSources;
 
@@ -129,7 +104,7 @@ void NormalizeMap(const TIntrusivePtr<TOpMap>& map, TExprContext& ctx, TPlanProp
     ValidateUniqueOutputIUs(map, ctx);
 }
 
-void NormalizeJoin(const TIntrusivePtr<TOpJoin>& join, TExprContext& ctx, TPlanProps& props) {
+void RepairJoinOutputIUs(const TIntrusivePtr<TOpJoin>& join, TExprContext& ctx, TPlanProps& props) {
     const bool leftVisible = join->JoinKind != "RightOnly" && join->JoinKind != "RightSemi";
     const bool rightVisible = join->JoinKind != "LeftOnly" && join->JoinKind != "LeftSemi";
     if (!leftVisible || !rightVisible) {
@@ -137,27 +112,19 @@ void NormalizeJoin(const TIntrusivePtr<TOpJoin>& join, TExprContext& ctx, TPlanP
         return;
     }
 
-    auto leftOutput = join->GetLeftInput()->GetOutputIUs();
-    auto rightOutput = join->GetRightInput()->GetOutputIUs();
+    const auto leftOutput = join->GetLeftInput()->GetOutputIUs();
+    const auto rightOutput = join->GetRightInput()->GetOutputIUs();
     const auto conflicts = IUSetIntersect(leftOutput, rightOutput);
 
     for (const auto& conflict : conflicts) {
-        TInfoUnit replacement;
-        if (auto promoted = TryPromoteAppendToRename(join->GetRightInput(), conflict, leftOutput)) {
-            replacement = *promoted;
-        } else {
-            replacement = AddIgnoreRename(join->GetRightInput(), conflict, join->Pos, ctx, props);
-        }
-
+        const auto replacement = AddIgnoreRename(join->GetRightInput(), conflict, join->Pos, ctx, props);
         RenameJoinSideReferences(*join, conflict, replacement, true);
-        rightOutput = join->GetRightInput()->GetOutputIUs();
-        leftOutput = join->GetLeftInput()->GetOutputIUs();
     }
 
     ValidateUniqueOutputIUs(join, ctx);
 }
 
-void NormalizeUnionAll(const TIntrusivePtr<TOpUnionAll>& unionAll, TExprContext& ctx, TPlanProps& props) {
+void RepairUnionAllOutputIUs(const TIntrusivePtr<TOpUnionAll>& unionAll, TExprContext& ctx, TPlanProps& props) {
     const auto leftOutput = unionAll->GetLeftInput()->GetOutputIUs();
     const auto rightOutput = unionAll->GetRightInput()->GetOutputIUs();
 
@@ -292,14 +259,14 @@ bool GetOrdered(const TKqpOpMap& map) {
 
 } // anonymous namespace
 
-void NormalizePlanOutputIUs(TOpRoot& root, TExprContext& ctx) {
+void RepairPlanOutputIUs(TOpRoot& root, TExprContext& ctx) {
     for (auto iter : root) {
         if (iter.Current->Kind == EOperator::Map) {
-            NormalizeMap(CastOperator<TOpMap>(iter.Current), ctx, root.PlanProps);
+            RepairMapOutputIUs(CastOperator<TOpMap>(iter.Current), ctx, root.PlanProps);
         } else if (iter.Current->Kind == EOperator::Join) {
-            NormalizeJoin(CastOperator<TOpJoin>(iter.Current), ctx, root.PlanProps);
+            RepairJoinOutputIUs(CastOperator<TOpJoin>(iter.Current), ctx, root.PlanProps);
         } else if (iter.Current->Kind == EOperator::UnionAll) {
-            NormalizeUnionAll(CastOperator<TOpUnionAll>(iter.Current), ctx, root.PlanProps);
+            RepairUnionAllOutputIUs(CastOperator<TOpUnionAll>(iter.Current), ctx, root.PlanProps);
         } else {
             ValidateUniqueOutputIUs(iter.Current, ctx);
         }
@@ -410,7 +377,7 @@ TIntrusivePtr<TOpRoot> PlanConverter::ConvertRoot(TExprNode::TPtr node) {
     }
 
     opRoot->ComputeParents();
-    NormalizePlanOutputIUs(*opRoot, Ctx);
+    RepairPlanOutputIUs(*opRoot, Ctx);
     opRoot->ComputeParents();
 
     // For subplans, we need to compute dependent variables correctly

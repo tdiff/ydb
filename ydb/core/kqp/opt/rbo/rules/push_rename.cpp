@@ -11,6 +11,11 @@ bool AddInfoUnitLocal(TInfoUnitSet& target, const TInfoUnit& iu) {
     return target.insert(iu).second;
 }
 
+const TInfoUnitSet& EmptyInfoUnitSet() {
+    static const TInfoUnitSet empty;
+    return empty;
+}
+
 bool HasDuplicateOutputs(const TVector<TInfoUnit>& outputIUs) {
     TInfoUnitSet seen;
     for (const auto& iu : outputIUs) {
@@ -153,7 +158,7 @@ bool CanRewriteResidualTopMap(const TIntrusivePtr<TOpMap>& topMap, size_t rename
     return true;
 }
 
-TVector<TInfoUnit> SimulateTopMapOutputAfterSink(const TIntrusivePtr<TOpMap>& topMap, size_t renameIdx, const TInfoUnit& from, const TInfoUnit& to) {
+TVector<TInfoUnit> SimulateTopMapOutputAfterPush(const TIntrusivePtr<TOpMap>& topMap, size_t renameIdx, const TInfoUnit& from, const TInfoUnit& to) {
     auto result = ReplaceOutputName(topMap->GetInput()->GetOutputIUs(), from, to);
 
     TInfoUnitSet renameSources;
@@ -251,7 +256,12 @@ void RemoveTopRenameAndRewriteResiduals(const TIntrusivePtr<TOpMap>& topMap, siz
     RenameMapInputsOnly(*topMap, renameMap);
 }
 
-bool TrySinkRename(const TIntrusivePtr<TOpMap>& topMap, size_t renameIdx, TRBOContext& ctx, TPlanProps& props) {
+bool RenameNeedsPush(const TIntrusivePtr<TOpMap>& topMap, const TMapElement& element, const TInfoUnitSet& liveOut, const TPlanProps& props) {
+    return liveOut.contains(element.GetElementName()) ||
+        props.NameConstraints.IsForbiddenAtOutput(topMap.get(), element.GetRename());
+}
+
+bool TryPushRename(const TIntrusivePtr<TOpMap>& topMap, size_t renameIdx, TRBOContext& ctx, TPlanProps& props) {
     const auto& renameElement = topMap->MapElements[renameIdx];
     const auto to = renameElement.GetElementName();
     const auto from = renameElement.GetRename();
@@ -265,8 +275,8 @@ bool TrySinkRename(const TIntrusivePtr<TOpMap>& topMap, size_t renameIdx, TRBOCo
         return false;
     }
 
-    const auto topOutputAfterSink = SimulateTopMapOutputAfterSink(topMap, renameIdx, from, to);
-    if (!SatisfiesNameConstraintsAtOutput(topMap, topOutputAfterSink, props)) {
+    const auto topOutputAfterPush = SimulateTopMapOutputAfterPush(topMap, renameIdx, from, to);
+    if (!SatisfiesNameConstraintsAtOutput(topMap, topOutputAfterPush, props)) {
         return false;
     }
 
@@ -279,24 +289,22 @@ bool TrySinkRename(const TIntrusivePtr<TOpMap>& topMap, size_t renameIdx, TRBOCo
 
 } // anonymous namespace
 
-bool TSinkRenameRule::MatchAndApply(TIntrusivePtr<IOperator>& input, TRBOContext& ctx, TPlanProps& props) {
+bool TPushRenameRule::MatchAndApply(TIntrusivePtr<IOperator>& input, TRBOContext& ctx, TPlanProps& props) {
     if (input->Kind != EOperator::Map) {
         return false;
     }
 
     auto topMap = CastOperator<TOpMap>(input);
     const auto liveIt = props.LiveOut.find(topMap.get());
-    if (liveIt == props.LiveOut.end()) {
-        return false;
-    }
+    const auto& liveOut = liveIt == props.LiveOut.end() ? EmptyInfoUnitSet() : liveIt->second;
 
     for (size_t idx = 0; idx < topMap->MapElements.size(); ++idx) {
         const auto& element = topMap->MapElements[idx];
-        if (!element.IsRename() || !liveIt->second.contains(element.GetElementName())) {
+        if (!element.IsRename() || !RenameNeedsPush(topMap, element, liveOut, props)) {
             continue;
         }
 
-        if (!TrySinkRename(topMap, idx, ctx, props)) {
+        if (!TryPushRename(topMap, idx, ctx, props)) {
             continue;
         }
 

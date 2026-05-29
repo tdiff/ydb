@@ -416,8 +416,8 @@ void TKqpNewRBOTransformer::InitializeRBOOptimizationStages() {
     logicalStageRules.emplace_back(std::make_unique<TRemoveIdenityMapRule>());
     logicalStageRules.emplace_back(std::make_unique<TPruneDeadMapElementsRule>());
     logicalStageRules.emplace_back(std::make_unique<TRenameToAppendRule>());
-    logicalStageRules.emplace_back(std::make_unique<TPushMapRule>());
-    logicalStageRules.emplace_back(std::make_unique<TSinkRenameRule>());
+    logicalStageRules.emplace_back(std::make_unique<TPushAppendRule>());
+    logicalStageRules.emplace_back(std::make_unique<TPushRenameRule>());
     logicalStageRules.emplace_back(std::make_unique<TInlineJoinFiltersRule>());
     logicalStageRules.emplace_back(std::make_unique<TFuseFiltersRule>());
     logicalStageRules.emplace_back(std::make_unique<TExtractJoinExpressionsRule>());

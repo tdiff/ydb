@@ -88,9 +88,9 @@ class TFuseFiltersRule : public ISimplifiedRule {
  * Push append-only map elements closer to sources through maps and joins.
  * If only part of a map can move safely, leave the rest above.
  */
-class TPushMapRule : public ISimplifiedRule {
+class TPushAppendRule : public ISimplifiedRule {
   public:
-    TPushMapRule() : ISimplifiedRule("Push map operator", ERuleProperties::RequireParents) {}
+    TPushAppendRule() : ISimplifiedRule("Push append map elements", ERuleProperties::RequireParents) {}
 
     virtual TIntrusivePtr<IOperator> SimpleMatchAndApply(const TIntrusivePtr<IOperator> &input, TRBOContext &ctx, TPlanProps &props) override;
 };
@@ -107,12 +107,12 @@ class TRenameToAppendRule : public IRule {
 };
 
 /**
- * Sink semantic renames through transparent operators into their producers.
+ * Push semantic renames through transparent operators into their producers.
  */
-class TSinkRenameRule : public IRule {
+class TPushRenameRule : public IRule {
   public:
-    TSinkRenameRule()
-        : IRule("Sink semantic rename", ERuleProperties::RequireParents | ERuleProperties::RequireLiveness | ERuleProperties::RequireNameConstraints) {}
+    TPushRenameRule()
+        : IRule("Push semantic rename", ERuleProperties::RequireParents | ERuleProperties::RequireLiveness | ERuleProperties::RequireNameConstraints) {}
 
     virtual bool MatchAndApply(TIntrusivePtr<IOperator>& input, TRBOContext& ctx, TPlanProps& props) override;
 };

@@ -89,7 +89,7 @@ bool TryComposeAliasAndPushToMap(const TIntrusivePtr<TOpMap>& bottomMap, const T
     return true;
 }
 
-TIntrusivePtr<IOperator> SinkMapElementsToMap(const TIntrusivePtr<TOpMap>& map) {
+TIntrusivePtr<IOperator> PushAppendElementsIntoMap(const TIntrusivePtr<TOpMap>& map) {
     auto bottomMap = CastOperator<TOpMap>(map->GetInput());
     const auto bottomInputIUs = bottomMap->GetInput()->GetOutputIUs();
     const auto blockedOutputs = GetRenameSources(map);
@@ -122,7 +122,7 @@ TIntrusivePtr<IOperator> SinkMapElementsToMap(const TIntrusivePtr<TOpMap>& map) 
     return MakeIntrusive<TOpMap>(bottomMap, map->Pos, topElements, map->Ordered);
 }
 
-TIntrusivePtr<IOperator> PushMapThroughJoin(const TIntrusivePtr<TOpMap>& map) {
+TIntrusivePtr<IOperator> PushAppendElementsThroughJoin(const TIntrusivePtr<TOpMap>& map) {
     auto join = CastOperator<TOpJoin>(map->GetInput());
     bool canPushRight = join->JoinKind != "Left" && join->JoinKind != "LeftOnly" && join->JoinKind != "LeftSemi";
     bool canPushLeft = join->JoinKind != "Right" && join->JoinKind != "RightOnly" && join->JoinKind != "RightSemi";
@@ -209,7 +209,7 @@ TIntrusivePtr<IOperator> PushMapThroughJoin(const TIntrusivePtr<TOpMap>& map) {
 // Push append-only map elements closer to sources. If only some elements can move, leave the rest above.
 // Semantic renames are a barrier: they change visible bindings, so this rule does not move them.
 
-TIntrusivePtr<IOperator> TPushMapRule::SimpleMatchAndApply(const TIntrusivePtr<IOperator> &input, TRBOContext &ctx, TPlanProps &props) {
+TIntrusivePtr<IOperator> TPushAppendRule::SimpleMatchAndApply(const TIntrusivePtr<IOperator> &input, TRBOContext &ctx, TPlanProps &props) {
     Y_UNUSED(ctx);
     Y_UNUSED(props);
 
@@ -220,11 +220,11 @@ TIntrusivePtr<IOperator> TPushMapRule::SimpleMatchAndApply(const TIntrusivePtr<I
     auto map = CastOperator<TOpMap>(input);
 
     if (map->GetInput()->Kind == EOperator::Map && map->GetInput()->IsSingleConsumer()) {
-        return SinkMapElementsToMap(map);
+        return PushAppendElementsIntoMap(map);
     }
 
     if (map->GetInput()->Kind == EOperator::Join) {
-        return PushMapThroughJoin(map);
+        return PushAppendElementsThroughJoin(map);
     }
 
     return input;

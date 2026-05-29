@@ -18,14 +18,14 @@ SRCS(
     push_filter_into_join.cpp
     push_filter_under_map.cpp
     push_limit_into_sort.cpp
-    push_map.cpp
+    push_append.cpp
     push_ranges.cpp
     push_olap_filter.cpp
     push_olap_projection.cpp
     disable_blocks_on_columns_limit.cpp
     rename_to_append.cpp
     remove_identity_map.cpp
-    sink_rename.cpp
+    push_rename.cpp
     propagate_aggregate_through_stage.cpp
     propagate_hash_func_stage.cpp
     propagate_topsort_through_stage.cpp
