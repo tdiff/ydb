@@ -2219,6 +2219,30 @@ Y_UNIT_TEST_SUITE(KqpRboYql) {
         }
     }
 
+    std::set<ui32> MakeTPC_YqlSingleQuerySkipList(const EBenchType type, const ui32 queryId) {
+        std::set<ui32> skipList;
+        for (ui32 qId = 1, e = BenchmarkQueryCount[type]; qId <= e; ++qId) {
+            if (qId != queryId) {
+                skipList.insert(qId);
+            }
+        }
+        return skipList;
+    }
+
+    void RunTPCH_YqlSingleQueryTest(const ui32 queryId, const bool expectedSuccess = true) {
+        std::set<ui32> expectedSuccessQueries;
+        if (expectedSuccess) {
+            expectedSuccessQueries.insert(queryId);
+        } else {
+            // An empty queriesStatus set means all non-skipped queries are expected to succeed.
+            expectedSuccessQueries.insert(BenchmarkQueryCount[EBenchType::TPCH] + 1);
+        }
+
+        RunTPC_YqlBenchmark(EBenchType::TPCH, /*columnstore=*/true, std::move(expectedSuccessQueries),
+                            MakeTPC_YqlSingleQuerySkipList(EBenchType::TPCH, queryId),
+                            /*new rbo=*/true, /*printStatus=*/false, /*compareResults=*/true, /*checkNewRBOCbo=*/true);
+    }
+
     void RunTPC_YqlTest(const EBenchType type, ui32 queryId, const bool columnStore, const bool newRbo) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnableNewRBO(newRbo);
@@ -2424,6 +2448,94 @@ Y_UNIT_TEST_SUITE(KqpRboYql) {
         // Q11 is intentionally omitted: it is not accepted by the current New RBO benchmark path.
         RunTPC_YqlBenchmark(EBenchType::TPCH, /*columnstore=*/true, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, /*11,*/ 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22},
                             {}, /*new rbo=*/true, /*printStatus=*/false, /*compareResults=*/true, /*checkNewRBOCbo=*/true);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q1) {
+        RunTPCH_YqlSingleQueryTest(1);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q2) {
+        RunTPCH_YqlSingleQueryTest(2);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q3) {
+        RunTPCH_YqlSingleQueryTest(3);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q4) {
+        RunTPCH_YqlSingleQueryTest(4);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q5) {
+        RunTPCH_YqlSingleQueryTest(5);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q6) {
+        RunTPCH_YqlSingleQueryTest(6);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q7) {
+        RunTPCH_YqlSingleQueryTest(7);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q8) {
+        RunTPCH_YqlSingleQueryTest(8);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q9) {
+        RunTPCH_YqlSingleQueryTest(9);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q10) {
+        RunTPCH_YqlSingleQueryTest(10);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q11) {
+        RunTPCH_YqlSingleQueryTest(11, /*expectedSuccess=*/false);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q12) {
+        RunTPCH_YqlSingleQueryTest(12);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q13) {
+        RunTPCH_YqlSingleQueryTest(13);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q14) {
+        RunTPCH_YqlSingleQueryTest(14);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q15) {
+        RunTPCH_YqlSingleQueryTest(15);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q16) {
+        RunTPCH_YqlSingleQueryTest(16);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q17) {
+        RunTPCH_YqlSingleQueryTest(17);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q18) {
+        RunTPCH_YqlSingleQueryTest(18);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q19) {
+        RunTPCH_YqlSingleQueryTest(19);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q20) {
+        RunTPCH_YqlSingleQueryTest(20);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q21) {
+        RunTPCH_YqlSingleQueryTest(21);
+    }
+
+    Y_UNIT_TEST(TPCH_YQL_Q22) {
+        RunTPCH_YqlSingleQueryTest(22);
     }
 
     Y_UNIT_TEST(TPCDS_YQL) {
