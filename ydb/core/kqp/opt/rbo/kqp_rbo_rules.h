@@ -96,6 +96,17 @@ class TPushMapRule : public ISimplifiedRule {
 };
 
 /**
+ * Convert semantic renames to append aliases when the original name may stay visible.
+ */
+class TRenameToAppendRule : public IRule {
+  public:
+    TRenameToAppendRule()
+        : IRule("Convert safe renames to appends", ERuleProperties::RequireParents | ERuleProperties::RequireLiveness | ERuleProperties::RequireNameConstraints) {}
+
+    virtual bool MatchAndApply(TIntrusivePtr<IOperator>& input, TRBOContext& ctx, TPlanProps& props) override;
+};
+
+/**
  * Sink semantic renames through transparent operators into their producers.
  */
 class TSinkRenameRule : public IRule {

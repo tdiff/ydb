@@ -1,5 +1,7 @@
 #include "kqp_rules_include.h"
 
+#include <algorithm>
+
 namespace NKikimr {
 namespace NKqp {
 
@@ -27,26 +29,83 @@ bool DependenciesAvailable(const TMapElement& mapElement, const TVector<TInfoUni
     return IUSetDiff(usedIUs, outputIUs).empty();
 }
 
-bool CanPushMap(const TIntrusivePtr<TOpMap>& map) {
-    return !map->HasRenames();
+TInfoUnitSet GetRenameSources(const TIntrusivePtr<TOpMap>& map) {
+    TInfoUnitSet result;
+    for (const auto& mapElement : map->MapElements) {
+        if (mapElement.IsRename()) {
+            result.insert(mapElement.GetRename());
+        }
+    }
+    return result;
+}
+
+const TMapElement* FindProducedMapElement(const TIntrusivePtr<TOpMap>& map, const TInfoUnit& iu) {
+    const auto it = std::find_if(map->MapElements.begin(), map->MapElements.end(), [&iu](const TMapElement& element) {
+        return element.GetElementName() == iu;
+    });
+    return it == map->MapElements.end() ? nullptr : &*it;
+}
+
+bool CanMoveAppendElement(const TMapElement& mapElement, const TInfoUnitSet& blockedOutputs) {
+    return !mapElement.IsRename() && !blockedOutputs.contains(mapElement.GetElementName());
+}
+
+bool TryPushElementToMap(const TIntrusivePtr<TOpMap>& bottomMap, const TMapElement& mapElement, const TVector<TInfoUnit>& bottomInputIUs) {
+    if (!DependenciesAvailable(mapElement, bottomInputIUs)) {
+        return false;
+    }
+
+    bottomMap->MapElements.push_back(mapElement);
+    if (HasDuplicateOutputs(bottomMap)) {
+        bottomMap->MapElements.pop_back();
+        return false;
+    }
+
+    return true;
+}
+
+bool TryComposeAliasAndPushToMap(const TIntrusivePtr<TOpMap>& bottomMap, const TMapElement& mapElement, const TVector<TInfoUnit>& bottomInputIUs) {
+    if (!mapElement.IsColumnAccess()) {
+        return false;
+    }
+
+    const auto* bottomElement = FindProducedMapElement(bottomMap, mapElement.GetColumnAccess());
+    if (!bottomElement) {
+        return false;
+    }
+
+    TMapElement composedElement = mapElement;
+    composedElement.SetExpression(bottomElement->GetExpression());
+    if (!DependenciesAvailable(composedElement, bottomInputIUs)) {
+        return false;
+    }
+
+    bottomMap->MapElements.push_back(composedElement);
+    if (HasDuplicateOutputs(bottomMap)) {
+        bottomMap->MapElements.pop_back();
+        return false;
+    }
+
+    return true;
 }
 
 TIntrusivePtr<IOperator> SinkMapElementsToMap(const TIntrusivePtr<TOpMap>& map) {
     auto bottomMap = CastOperator<TOpMap>(map->GetInput());
     const auto bottomInputIUs = bottomMap->GetInput()->GetOutputIUs();
+    const auto blockedOutputs = GetRenameSources(map);
 
     TVector<TMapElement> topElements;
     bool pushed = false;
 
     for (const auto& mapElement : map->MapElements) {
-        if (DependenciesAvailable(mapElement, bottomInputIUs)) {
-            bottomMap->MapElements.push_back(mapElement);
-            if (HasDuplicateOutputs(bottomMap)) {
-                bottomMap->MapElements.pop_back();
-                topElements.push_back(mapElement);
-            } else {
-                pushed = true;
-            }
+        if (!CanMoveAppendElement(mapElement, blockedOutputs)) {
+            topElements.push_back(mapElement);
+            continue;
+        }
+
+        if (TryPushElementToMap(bottomMap, mapElement, bottomInputIUs) ||
+            TryComposeAliasAndPushToMap(bottomMap, mapElement, bottomInputIUs)) {
+            pushed = true;
         } else {
             topElements.push_back(mapElement);
         }
@@ -67,6 +126,7 @@ TIntrusivePtr<IOperator> PushMapThroughJoin(const TIntrusivePtr<TOpMap>& map) {
     auto join = CastOperator<TOpJoin>(map->GetInput());
     bool canPushRight = join->JoinKind != "Left" && join->JoinKind != "LeftOnly" && join->JoinKind != "LeftSemi";
     bool canPushLeft = join->JoinKind != "Right" && join->JoinKind != "RightOnly" && join->JoinKind != "RightSemi";
+    const auto blockedOutputs = GetRenameSources(map);
 
     // Make sure the join and its inputs are single consumer.
     // FIXME: join inputs don't have to be single consumer, but this used to break due to multiple consumer problem.
@@ -79,7 +139,9 @@ TIntrusivePtr<IOperator> PushMapThroughJoin(const TIntrusivePtr<TOpMap>& map) {
     TVector<std::pair<TMapElement, EPushTarget>> classifiedElements;
 
     for (const auto& mapElement : map->MapElements) {
-        if (DependenciesAvailable(mapElement, join->GetLeftInput()->GetOutputIUs()) && canPushLeft) {
+        if (!CanMoveAppendElement(mapElement, blockedOutputs)) {
+            classifiedElements.emplace_back(mapElement, EPushTarget::Top);
+        } else if (DependenciesAvailable(mapElement, join->GetLeftInput()->GetOutputIUs()) && canPushLeft) {
             leftMapElements.push_back(mapElement);
             classifiedElements.emplace_back(mapElement, EPushTarget::Left);
         } else if (DependenciesAvailable(mapElement, join->GetRightInput()->GetOutputIUs()) && canPushRight) {
@@ -156,9 +218,6 @@ TIntrusivePtr<IOperator> TPushMapRule::SimpleMatchAndApply(const TIntrusivePtr<I
     }
 
     auto map = CastOperator<TOpMap>(input);
-    if (!CanPushMap(map)) {
-        return input;
-    }
 
     if (map->GetInput()->Kind == EOperator::Map && map->GetInput()->IsSingleConsumer()) {
         return SinkMapElementsToMap(map);

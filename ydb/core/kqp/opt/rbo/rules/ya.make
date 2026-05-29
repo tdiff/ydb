@@ -23,6 +23,7 @@ SRCS(
     push_olap_filter.cpp
     push_olap_projection.cpp
     disable_blocks_on_columns_limit.cpp
+    rename_to_append.cpp
     remove_identity_map.cpp
     sink_rename.cpp
     propagate_aggregate_through_stage.cpp
