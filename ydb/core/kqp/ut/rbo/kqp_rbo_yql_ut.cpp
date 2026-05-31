@@ -2443,10 +2443,131 @@ Y_UNIT_TEST_SUITE(KqpRboYql) {
         }
     }
 
+    Y_UNIT_TEST(ProjectionNormalizationComplexPropagation) {
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnableNewRBO(true);
+        appConfig.MutableTableServiceConfig()->SetEnableFallbackToYqlOptimizer(false);
+        appConfig.MutableTableServiceConfig()->SetAllowOlapDataQuery(true);
+        appConfig.MutableTableServiceConfig()->SetDefaultLangVer(NYql::GetMaxLangVersion());
+        appConfig.MutableTableServiceConfig()->SetBackportMode(NKikimrConfig::TTableServiceConfig_EBackportMode_All);
+
+        TKikimrRunner kikimr(NKqp::TKikimrSettings(appConfig).SetWithSampleTables(false));
+
+        auto tableClient = kikimr.GetTableClient();
+        auto tableSession = tableClient.CreateSession().GetValueSync().GetSession();
+        CreateTablesFromPath(tableSession, BenchmarkSchemaPathPrefix[EBenchType::TPCH], BenchmarkSchemaPath[EBenchType::TPCH], /*useColumnStore*/ true);
+
+        const TString query = R"(
+            PRAGMA YqlSelect = 'force';
+            PRAGMA AnsiImplicitCrossJoin;
+
+            $zero_i32 = cast(0 as Int32);
+            $zero_i64 = cast(0 as Int64);
+            $one_i64 = cast(1 as Int64);
+            $two_i64 = cast(2 as Int64);
+
+            $c0 = (
+                SELECT
+                    c.c_custkey AS c_k,
+                    c.c_nationkey AS c_nkey,
+                    c.c_custkey AS c_amount,
+                    c.c_custkey + $one_i64 AS c_metric
+                FROM `/Root/customer` AS c
+                WHERE c.c_custkey > $zero_i64
+                ORDER BY c.c_custkey
+                LIMIT 1000
+            );
+
+            $s0 = (
+                SELECT
+                    s.s_suppkey AS s_k,
+                    s.s_nationkey AS s_nkey,
+                    s.s_suppkey AS s_amount,
+                    s.s_suppkey + $two_i64 AS s_metric
+                FROM `/Root/supplier` AS s
+                WHERE EXISTS (
+                    SELECT *
+                    FROM `/Root/nation` AS n
+                    WHERE n.n_nationkey == s.s_nationkey
+                        AND n.n_name IS NOT NULL
+                )
+            );
+
+            $inner_j = (
+                SELECT
+                    c_k AS k,
+                    s_k AS supplier_key,
+                    c_nkey AS nkey,
+                    c_amount + s_amount AS amount,
+                    c_metric + s_metric AS metric
+                FROM $c0, $s0
+                WHERE c_nkey == s_nkey
+            );
+
+            $left_j = (
+                SELECT
+                    k,
+                    nkey,
+                    amount,
+                    metric + cast(coalesce(ps_availqty, $zero_i32) as Int64) AS metric2
+                FROM $inner_j
+                LEFT JOIN `/Root/partsupp` AS partsupp
+                    ON supplier_key == partsupp.ps_suppkey
+            );
+
+            $agg = (
+                SELECT
+                    nkey AS k,
+                    MAX(metric2 + amount) AS sort_metric
+                FROM $left_j
+                GROUP BY nkey
+            );
+
+            $unioned = (
+                SELECT k, sort_metric
+                FROM $agg
+
+                UNION ALL
+
+                SELECT
+                    cast(n.n_nationkey as Int32?) AS k,
+                    cast(n.n_nationkey as Int64) AS sort_metric
+                FROM `/Root/nation` AS n
+            );
+
+            SELECT
+                k AS result_key,
+                k + $one_i64 AS result_amount
+            FROM $unioned
+            ORDER BY sort_metric DESC
+            LIMIT 10;
+        )";
+
+        auto queryClient = kikimr.GetQueryClient();
+        auto querySession = queryClient.GetSession().GetValueSync().GetSession();
+        auto result = querySession.ExecuteQuery(query,
+            NYdb::NQuery::TTxControl::NoTx(),
+            NYdb::NQuery::TExecuteQuerySettings().ExecMode(NQuery::EExecMode::Explain)
+        ).ExtractValueSync();
+
+        UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+        UNIT_ASSERT_C(result.GetStats()->GetPlan().has_value(), "Missing explain plan");
+
+        const auto plan = TString{*result.GetStats()->GetPlan()};
+        const auto simplifiedPlan = GetSimplifiedPlan(plan);
+        UNIT_ASSERT_C(FindOperatorByStringField(simplifiedPlan, "JoinKind", "Inner"), plan);
+        UNIT_ASSERT_C(FindOperatorByStringField(simplifiedPlan, "JoinKind", "Left"), plan);
+        UNIT_ASSERT_C(FindOperatorByStringFieldContaining(simplifiedPlan, "Aggregation", ": max("), plan);
+        UNIT_ASSERT_C(FindOperatorByStringField(simplifiedPlan, "Name", "UnionAll"), plan);
+        UNIT_ASSERT_C(FindOperatorByStringField(simplifiedPlan, "Name", "TopSort") || FindOperatorByStringField(simplifiedPlan, "Name", "Sort"), plan);
+        UNIT_ASSERT_C(plan.Contains("Join"), plan);
+        UNIT_ASSERT_C(!plan.Contains("__kqp_rbo_ignore_arg_"), plan);
+    }
+
     Y_UNIT_TEST(TPCH_YQL) {
         // RunTPCHYqlBenchmark(/*columnstore*/ true, {}, {}, /*new rbo*/ false);
-        // Q11 and Q13 are intentionally omitted: they are not accepted by the current New RBO benchmark path.
-        RunTPC_YqlBenchmark(EBenchType::TPCH, /*columnstore=*/true, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, /*11,*/ 12, /*13,*/ 14, 15, 16, 17, 18, 19, 20, 21, 22},
+        // Q11 is intentionally omitted: it is not accepted by the current New RBO benchmark path.
+        RunTPC_YqlBenchmark(EBenchType::TPCH, /*columnstore=*/true, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, /*11,*/ 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22},
                             {}, /*new rbo=*/true, /*printStatus=*/false, /*compareResults=*/true, /*checkNewRBOCbo=*/true);
     }
 
@@ -2499,7 +2620,7 @@ Y_UNIT_TEST_SUITE(KqpRboYql) {
     }
 
     Y_UNIT_TEST(TPCH_YQL_Q13) {
-        RunTPCH_YqlSingleQueryTest(13, /*expectedSuccess=*/false);
+        RunTPCH_YqlSingleQueryTest(13);
     }
 
     Y_UNIT_TEST(TPCH_YQL_Q14) {
