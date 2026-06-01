@@ -1,7 +1,5 @@
 #include "kqp_rules_include.h"
 
-#include <algorithm>
-
 namespace NKikimr {
 namespace NKqp {
 
@@ -352,46 +350,6 @@ TVector<TInfoUnit> KeepLiveColumns(const TVector<TInfoUnit>& columns, const TInf
     return newColumns;
 }
 
-bool HasCurrentReferenceAbove(const TIntrusivePtr<IOperator>& op, const TInfoUnit& iu, TPlanProps& props) {
-    THashSet<IOperator*> visited;
-    TVector<IOperator*> queue;
-    queue.push_back(op.get());
-
-    for (size_t index = 0; index < queue.size(); ++index) {
-        const auto current = queue[index];
-        for (const auto& [parent, childIdx] : current->Parents) {
-            Y_UNUSED(childIdx);
-            if (!visited.insert(parent).second) {
-                continue;
-            }
-
-            const auto usedIUs = parent->GetUsedIUs(props);
-            if (std::find(usedIUs.begin(), usedIUs.end(), iu) != usedIUs.end()) {
-                return true;
-            }
-
-            const auto parentOutput = MakeInfoUnitSetLocal(parent->GetOutputIUs());
-            if (parentOutput.contains(iu)) {
-                queue.push_back(parent);
-            }
-        }
-    }
-
-    return false;
-}
-
-TInfoUnitSet AddCurrentReferencesToRequiredOutput(const TIntrusivePtr<TOpMap>& map, const TInfoUnitSet& liveOut, TPlanProps& props) {
-    TInfoUnitSet requiredOutput = liveOut;
-
-    for (const auto& iu : map->GetOutputIUs()) {
-        if (!requiredOutput.contains(iu) && HasCurrentReferenceAbove(map, iu, props)) {
-            AddLiveColumn(requiredOutput, iu);
-        }
-    }
-
-    return requiredOutput;
-}
-
 void AddReadColumnByName(const TOpRead& read, const TString& columnName, TInfoUnitSet& requiredColumns) {
     for (const auto& outputIU : read.OutputIUs) {
         if (outputIU.GetFullName() == columnName || outputIU.GetColumnName() == columnName) {
@@ -594,8 +552,7 @@ bool TPruneDeadMapElementsRule::MatchAndApply(TIntrusivePtr<IOperator>& input, T
         return false;
     }
 
-    const auto requiredOutput = AddCurrentReferencesToRequiredOutput(map, liveIt->second, props);
-    auto newElements = KeepLiveMapElements(map, requiredOutput, props);
+    auto newElements = KeepLiveMapElements(map, liveIt->second, props);
     if (newElements.size() == map->MapElements.size()) {
         return false;
     }
