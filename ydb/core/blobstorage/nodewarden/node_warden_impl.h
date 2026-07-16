@@ -6,6 +6,7 @@
 #include <ydb/core/base/tablet_pipe.h>
 #include <ydb/core/blobstorage/dsproxy/group_sessions.h>
 #include <ydb/core/blobstorage/dsproxy/dsproxy_nodemon.h>
+#include <ydb/core/blobstorage/dsproxy/mock/dsproxy_mock.h>
 #include <ydb/core/blobstorage/incrhuge/incrhuge.h>
 #include <ydb/core/cms/console/configs_dispatcher.h>
 #include <ydb/core/cms/console/console.h>
@@ -174,6 +175,8 @@ namespace NKikimr::NStorage {
         bool EnableProxyMock = false;
         NKikimrBlobStorage::TMockDevicesConfig MockDevicesConfig;
         NKikimrBlobStorage::TInferPDiskSlotCountSettings InferPDiskSlotCountSettings;
+
+        std::optional<TBSFailureInjectionConfig> FailureInjectionConfig;
 
         struct TEvPrivate {
             enum EEv {

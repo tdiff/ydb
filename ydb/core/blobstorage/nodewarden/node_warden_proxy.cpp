@@ -126,8 +126,15 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
     // subscribe for group information changes through distconf cache
     Send(SelfId(), new TEvNodeWardenQueryCache(Sprintf("G%08" PRIx32, groupId), true));
 
-    group.ProxyId = as->Register(proxy.release(), TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
-    as->RegisterLocalService(MakeBlobStorageProxyID(groupId), group.ProxyId);
+    auto id = as->Register(proxy.release(), TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
+    if (FailureInjectionConfig)
+    {
+        id = as->Register(
+            CreateBlobStorageGroupFailureInjectingActor(id, groupId, *FailureInjectionConfig),
+            TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
+    }
+    group.ProxyId = id;
+    as->RegisterLocalService(MakeBlobStorageProxyID(groupId), id);
 }
 
 void TNodeWarden::StartVirtualGroupAgent(ui32 groupId) {

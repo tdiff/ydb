@@ -1059,12 +1059,19 @@ message TNodeWardenServiceSet {
         optional uint64 TotalResponseBytesPerSecond = 6; // quota for generated responses at network layer
     }
 
+    message TFailureInjectionConfig {
+        optional bool Enabled = 1;
+        optional double ProbabilityPercentage = 2;
+        optional uint64 RandomSeed = 3;
+    }
+
     repeated TPDisk PDisks = 1;
     repeated TVDisk VDisks = 2;
     repeated NKikimrBlobStorage.TGroupInfo Groups = 3;
     repeated uint64 AvailabilityDomains = 4;
     optional TReplBrokerConfig ReplBrokerConfig = 5;
     optional bool EnableProxyMock = 7;
+    optional TFailureInjectionConfig FailureInjectionConfig = 8;
 }
 
 message TNodeWardenCache {
