@@ -2,6 +2,8 @@
 
 #include "defs.h"
 #include <ydb/core/base/blobstorage_common.h>
+#include <ydb/core/protos/blobstorage.pb.h>
+
 namespace NKikimr {
 
     namespace NFake {
@@ -11,12 +13,7 @@ namespace NKikimr {
     IActor *CreateBlobStorageGroupProxyMockActor(TIntrusivePtr<NFake::TProxyDS> model);
     IActor *CreateBlobStorageGroupProxyMockActor(TGroupId groupId);
 
-    struct TBSFailureInjectionConfig
-    {
-        double FailureProbability = 0.0;
-        bool IncludeStaticGroups = false;
-        std::optional<ui64> RandomSeed = 0;
-    };
-    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, TGroupId groupId, TBSFailureInjectionConfig config);
+    using TBSFailureInjectionConfig = NKikimrBlobStorage::TNodeWardenServiceSet::TFailureInjectionConfig;
+    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, TGroupId groupId, const TBSFailureInjectionConfig& config);
 
 } // NKikimr

@@ -567,18 +567,6 @@ void TNodeWarden::Bootstrap() {
     // determine if we are running in 'mock' mode
     EnableProxyMock = Cfg->BlobStorageConfig.GetServiceSet().GetEnableProxyMock();
 
-    // determine if we want to inject BS errors
-    if (Cfg->BlobStorageConfig.GetServiceSet().HasFailureInjectionConfig()) {
-        auto const& protoConfig = Cfg->BlobStorageConfig.GetServiceSet().GetFailureInjectionConfig();
-        if (protoConfig.GetFailureProbability() > 0) {
-            FailureInjectionConfig = TBSFailureInjectionConfig {
-                .FailureProbability = std::clamp(protoConfig.GetFailureProbability(), 0.0, 1.0),
-                .IncludeStaticGroups = protoConfig.GetIncludeStaticGroups(),
-                .RandomSeed = protoConfig.HasRandomSeed() ? std::optional<ui64>(protoConfig.GetRandomSeed()) : std::nullopt
-            };
-        }
-    }
-
     // fill in a base storage config (from the file)
     NKikimrConfig::TAppConfig appConfig;
     appConfig.MutableBlobStorageConfig()->CopyFrom(Cfg->BlobStorageConfig);

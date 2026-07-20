@@ -1063,6 +1063,7 @@ message TNodeWardenServiceSet {
         optional double FailureProbability = 2;
         optional bool IncludeStaticGroups = 3; // also inject failures in request to static groups
         optional uint64 RandomSeed = 4;
+        optional NKikimrProto.EReplyStatus ErrorReplyStatus = 5 [default = ERROR];
     }
 
     repeated TPDisk PDisks = 1;

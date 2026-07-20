@@ -160,6 +160,7 @@ namespace NKikimr {
             const TGroupId GroupId;
             const double FailureProbability;
             const ui64 RandomFailureSeed;
+            const NKikimrProto::EReplyStatus ErrorReplyStatus;
             TFastRng64 Rng;
             const TString FailureErrorReason;
 
@@ -171,14 +172,16 @@ namespace NKikimr {
                 : TActor(&TThis::StateWork)
                 , RealProxy(realProxy)
                 , GroupId(groupId)
-                , FailureProbability(config.FailureProbability)
-                , RandomFailureSeed(config.RandomSeed ? *config.RandomSeed : RandomNumber<ui64>())
+                , FailureProbability(std::clamp(config.GetFailureProbability(), 0.0, 1.0))
+                , RandomFailureSeed(config.HasRandomSeed() ? config.GetRandomSeed() : RandomNumber<ui64>())
+                , ErrorReplyStatus(config.GetErrorReplyStatus())
                 , Rng(RandomFailureSeed)
                 , FailureErrorReason(TStringBuilder()
                     << "injected by BSProxyInterceptor"
                     << " group " << GroupId
                     << " seed " << RandomFailureSeed)
-            {}
+            {
+            }
 
         private:
             bool ShouldInjectFailure()
@@ -196,7 +199,7 @@ namespace NKikimr {
                     return false;
                 }
 
-                auto response = request.MakeErrorResponse(NKikimrProto::ERROR, FailureErrorReason, GroupId);
+                auto response = request.MakeErrorResponse(ErrorReplyStatus, FailureErrorReason, GroupId);
                 response->ExecutionRelay = std::move(request.ExecutionRelay);
 
                 LOG_WARN_S(*TlsActivationContext, NKikimrServices::BS_PROXY,
@@ -303,7 +306,7 @@ namespace NKikimr {
         return new TBlobStorageGroupProxyMockActor(groupId);
     }
 
-    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, TGroupId groupId, TBSFailureInjectionConfig config) {
+    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, TGroupId groupId, const TBSFailureInjectionConfig& config) {
         return new TBlobStorageFailureInjectingActor(actorId, groupId, config);
     }
 

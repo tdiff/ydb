@@ -176,8 +176,6 @@ namespace NKikimr::NStorage {
         NKikimrBlobStorage::TMockDevicesConfig MockDevicesConfig;
         NKikimrBlobStorage::TInferPDiskSlotCountSettings InferPDiskSlotCountSettings;
 
-        std::optional<TBSFailureInjectionConfig> FailureInjectionConfig;
-
         struct TEvPrivate {
             enum EEv {
                 EvSendDiskMetrics = EventSpaceBegin(TEvents::ES_PRIVATE),
