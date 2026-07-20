@@ -157,7 +157,7 @@ namespace NKikimr {
         {
         private:
             const TActorId RealProxy;
-            const ui32 GroupId;
+            const TGroupId GroupId;
             const double FailureProbability;
             const ui64 RandomFailureSeed;
             TFastRng64 Rng;
@@ -166,7 +166,7 @@ namespace NKikimr {
         public:
             TBlobStorageFailureInjectingActor(
                     TActorId realProxy,
-                    ui32 groupId,
+                    TGroupId groupId,
                     TBSFailureInjectionConfig config)
                 : TActor(&TThis::StateWork)
                 , RealProxy(realProxy)
@@ -196,10 +196,7 @@ namespace NKikimr {
                     return false;
                 }
 
-                auto response = request.MakeErrorResponse(
-                    NKikimrProto::ERROR,
-                    FailureErrorReason,
-                    TGroupId::FromValue(GroupId));
+                auto response = request.MakeErrorResponse(NKikimrProto::ERROR, FailureErrorReason, GroupId);
                 response->ExecutionRelay = std::move(request.ExecutionRelay);
 
                 LOG_WARN_S(*TlsActivationContext, NKikimrServices::BS_PROXY,
@@ -306,7 +303,7 @@ namespace NKikimr {
         return new TBlobStorageGroupProxyMockActor(groupId);
     }
 
-    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, ui32 groupId, TBSFailureInjectionConfig config) {
+    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, TGroupId groupId, TBSFailureInjectionConfig config) {
         return new TBlobStorageFailureInjectingActor(actorId, groupId, config);
     }
 

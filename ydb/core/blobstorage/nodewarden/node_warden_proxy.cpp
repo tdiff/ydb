@@ -129,9 +129,12 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
     auto id = as->Register(proxy.release(), TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
     if (FailureInjectionConfig)
     {
-        id = as->Register(
-            CreateBlobStorageGroupFailureInjectingActor(id, groupId, *FailureInjectionConfig),
-            TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
+        const auto gid = TGroupId::FromValue(groupId);
+        if (IsDynamicGroup(gid) || FailureInjectionConfig->IncludeStaticGroups) {
+            id = as->Register(
+                CreateBlobStorageGroupFailureInjectingActor(id, gid, *FailureInjectionConfig),
+                TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
+        }
     }
     group.ProxyId = id;
     as->RegisterLocalService(MakeBlobStorageProxyID(groupId), id);

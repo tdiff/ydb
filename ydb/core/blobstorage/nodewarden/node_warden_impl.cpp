@@ -570,9 +570,10 @@ void TNodeWarden::Bootstrap() {
     // determine if we want to inject BS errors
     if (Cfg->BlobStorageConfig.GetServiceSet().HasFailureInjectionConfig()) {
         auto const& protoConfig = Cfg->BlobStorageConfig.GetServiceSet().GetFailureInjectionConfig();
-        if (protoConfig.GetEnabled()) {
+        if (protoConfig.GetFailureProbability() > 0) {
             FailureInjectionConfig = TBSFailureInjectionConfig {
-                .FailureProbability = std::clamp(protoConfig.GetProbabilityPercentage() / 100.0, 0.0, 1.0),
+                .FailureProbability = std::clamp(protoConfig.GetFailureProbability(), 0.0, 1.0),
+                .IncludeStaticGroups = protoConfig.GetIncludeStaticGroups(),
                 .RandomSeed = protoConfig.HasRandomSeed() ? std::optional<ui64>(protoConfig.GetRandomSeed()) : std::nullopt
             };
         }

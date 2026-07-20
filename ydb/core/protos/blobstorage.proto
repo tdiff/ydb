@@ -1060,9 +1060,9 @@ message TNodeWardenServiceSet {
     }
 
     message TFailureInjectionConfig {
-        optional bool Enabled = 1;
-        optional double ProbabilityPercentage = 2;
-        optional uint64 RandomSeed = 3;
+        optional double FailureProbability = 2;
+        optional bool IncludeStaticGroups = 3; // also inject failures in request to static groups
+        optional uint64 RandomSeed = 4;
     }
 
     repeated TPDisk PDisks = 1;

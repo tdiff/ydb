@@ -14,8 +14,9 @@ namespace NKikimr {
     struct TBSFailureInjectionConfig
     {
         double FailureProbability = 0.0;
+        bool IncludeStaticGroups = false;
         std::optional<ui64> RandomSeed = 0;
     };
-    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, ui32 groupId, TBSFailureInjectionConfig config);
+    IActor *CreateBlobStorageGroupFailureInjectingActor(TActorId actorId, TGroupId groupId, TBSFailureInjectionConfig config);
 
 } // NKikimr
